@@ -36,7 +36,7 @@
     }
     #game-wrapper {
       max-width: 100%;
-      overflow-x: auto; /* 人数が多い場合はスクロールできるようにする */
+      overflow-x: auto;
       white-space: nowrap;
     }
     #game-container {
@@ -52,16 +52,20 @@
       position: relative;
       height: 35px;
       margin-bottom: 5px;
+      margin-left: auto;  /* 中央揃えの追加 */
+      margin-right: auto; /* 中央揃えの追加 */
     }
     .name-input {
       position: absolute;
-      width: 36px;
+      min-width: 36px; /* widthをmin-widthに変更 */
       padding: 4px 2px;
       text-align: center;
       font-size: 12px;
       border: 1px solid #aaa;
       border-radius: 4px;
       box-sizing: border-box;
+      transform: translateX(-50%); /* 幅に関わらず常に線の中央に配置する */
+      transition: width 0.1s ease; /* 幅変更時のアニメーション */
     }
     .name-input:focus {
       outline: 2px solid #2196F3;
@@ -69,6 +73,8 @@
     }
     canvas {
       background-color: #fff;
+      display: block;     /* 中央揃えのために追加 */
+      margin: 0 auto;     /* 中央揃えのために追加 */
     }
     #controls {
       margin-top: 20px;
@@ -120,7 +126,6 @@
 
   <h1>あみだくじ抽選ツール</h1>
   
-  <!-- 設定エリアを追加 -->
   <div class="settings">
     <label>参加人数: 
       <input type="number" id="setting-lines" value="10" min="2" max="50" onchange="init()">
@@ -150,7 +155,6 @@
     const canvas = document.getElementById('amidaCanvas');
     const ctx = canvas.getContext('2d');
     
-    // 変数化して設定から読み込めるように変更
     let NUM_LINES = 10;
     let NUM_WINNERS = 2;
     let WIDTH = 550;
@@ -167,20 +171,16 @@
     let isAnimating = false;
     let isRevealed = false; 
 
-    // 初期化関数
     function init() {
-      // 設定値の取得
       NUM_LINES = parseInt(document.getElementById('setting-lines').value) || 10;
       NUM_WINNERS = parseInt(document.getElementById('setting-winners').value) || 2;
 
-      // エラー処理：当選者が参加人数を超えないようにする
       if (NUM_WINNERS >= NUM_LINES) {
         NUM_WINNERS = NUM_LINES - 1;
         document.getElementById('setting-winners').value = NUM_WINNERS;
         alert("当選者数は参加人数より少なく自動調整されました。");
       }
 
-      // キャンバスと入力エリアの幅を人数に応じて動的に計算
       WIDTH = MARGIN_LEFT * 2 + (NUM_LINES - 1) * LINE_SPACING;
       canvas.width = WIDTH;
       document.getElementById('name-inputs').style.width = WIDTH + "px";
@@ -196,7 +196,6 @@
       drawBackground();
     }
 
-    // 当選と落選の配置をランダムに生成
     function generateResults() {
       results = Array(NUM_LINES).fill("落選");
       let winnersPlaced = 0;
@@ -209,10 +208,8 @@
       }
     }
 
-    // 横線をランダムに生成
     function generateHorizontalLines() {
       horizontalLines = [];
-      // 線の数に応じて横線の数も増減させる
       const numHlines = Math.floor(NUM_LINES * 2.5); 
       
       for (let i = 0; i < numHlines; i++) {
@@ -230,7 +227,6 @@
       horizontalLines.sort((a, b) => a.y - b.y);
     }
 
-    // 名前入力欄を生成
     function createInputs() {
       const container = document.getElementById('name-inputs');
       container.innerHTML = '';
@@ -240,16 +236,27 @@
         input.type = 'text';
         input.className = 'name-input';
         input.placeholder = (i + 1);
-        input.maxLength = 5;
+        input.maxLength = 15; // 長い名前にも対応できるよう文字数を拡張
         
+        // CSSの translateX(-50%) によって中央揃えになるため、固定値(-18)の引き算を削除
         const xPos = MARGIN_LEFT + i * LINE_SPACING;
-        input.style.left = (xPos - 18) + "px"; 
+        input.style.left = xPos + "px"; 
         
+        // 文字入力時に幅を自動調整するイベント
+        input.addEventListener('input', function() {
+          const charLength = this.value.length;
+          // 最低36pxを確保しつつ、1文字につき約14px分＋余白を足して広げる
+          const newWidth = Math.max(36, charLength * 14 + 16);
+          this.style.width = newWidth + "px";
+        });
+        
+        // 初期の幅を設定
+        input.style.width = "36px";
+
         container.appendChild(input);
       }
     }
 
-    // ベースのあみだくじを描画
     function drawBackground() {
       ctx.clearRect(0, 0, WIDTH, HEIGHT);
       
@@ -282,7 +289,6 @@
       }
     }
 
-    // 抽選スタート処理
     function startDraw() {
       if (isAnimating || isRevealed) return;
       
@@ -307,7 +313,6 @@
       animateWinningPaths(winningPaths, winningNames);
     }
 
-    // 経路計算ロジック
     function calculatePath(startIndex) {
       let currentCol = startIndex;
       let currentY = MARGIN_TOP;
@@ -332,7 +337,6 @@
       return path;
     }
 
-    // 当選ルートのアニメーション処理
     function animateWinningPaths(winningPaths, winningNames) {
       let pathIndices = winningPaths.map(() => 0);
       let currentPos = winningPaths.map(p => ({ ...p[0] }));
@@ -390,7 +394,6 @@
       drawFrame();
     }
 
-    // 起動時に初期化
     window.onload = init;
   </script>
 </body>

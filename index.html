@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>あみだくじ抽選ツール</title>
+  <style>
+    body {
+      font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+      text-align: center;
+      background-color: #f7f9fc;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      color: #333;
+    }
+    .settings {
+      margin-bottom: 20px;
+      padding: 15px;
+      background: #e3f2fd;
+      border-radius: 8px;
+      display: inline-block;
+    }
+    .settings label {
+      font-weight: bold;
+      margin: 0 10px;
+    }
+    .settings input[type="number"] {
+      width: 60px;
+      padding: 5px;
+      font-size: 16px;
+      text-align: center;
+      border: 1px solid #aaa;
+      border-radius: 4px;
+    }
+    #game-wrapper {
+      max-width: 100%;
+      overflow-x: auto; /* 人数が多い場合はスクロールできるようにする */
+      white-space: nowrap;
+    }
+    #game-container {
+      position: relative;
+      display: inline-block;
+      margin-top: 10px;
+      background: #fff;
+      padding: 30px 20px 20px 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    .input-wrapper {
+      position: relative;
+      height: 35px;
+      margin-bottom: 5px;
+    }
+    .name-input {
+      position: absolute;
+      width: 36px;
+      padding: 4px 2px;
+      text-align: center;
+      font-size: 12px;
+      border: 1px solid #aaa;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    .name-input:focus {
+      outline: 2px solid #2196F3;
+      border-color: transparent;
+    }
+    canvas {
+      background-color: #fff;
+    }
+    #controls {
+      margin-top: 20px;
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+    }
+    .action-btn {
+      padding: 12px 24px;
+      font-size: 16px;
+      font-weight: bold;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.2s, transform 0.1s;
+    }
+    .action-btn:active {
+      transform: scale(0.95);
+    }
+    #draw-btn {
+      background-color: #e91e63;
+    }
+    #draw-btn:hover {
+      background-color: #d81b60;
+    }
+    #draw-btn:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+      transform: none;
+    }
+    #reset-btn {
+      background-color: #2196F3;
+    }
+    #reset-btn:hover {
+      background-color: #1976D2;
+    }
+    #status {
+      margin-top: 20px;
+      font-size: 20px;
+      font-weight: bold;
+      color: #e91e63;
+      min-height: 30px;
+      white-space: normal;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>あみだくじ抽選ツール</h1>
+  
+  <!-- 設定エリアを追加 -->
+  <div class="settings">
+    <label>参加人数: 
+      <input type="number" id="setting-lines" value="10" min="2" max="50" onchange="init()">
+    </label>
+    <label>当選者数: 
+      <input type="number" id="setting-winners" value="2" min="1" max="49" onchange="init()">
+    </label>
+  </div>
+
+  <p>上の枠に名前を入力し、「抽選スタート」を押してください。（空欄でも遊べます）</p>
+
+  <div id="game-wrapper">
+    <div id="game-container">
+      <div class="input-wrapper" id="name-inputs"></div>
+      <canvas id="amidaCanvas" height="400"></canvas>
+      
+      <div id="controls">
+        <button id="draw-btn" class="action-btn" onclick="startDraw()">抽選スタート！</button>
+        <button id="reset-btn" class="action-btn" onclick="init()">あみだを再生成</button>
+      </div>
+      
+      <div id="status"></div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('amidaCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // 変数化して設定から読み込めるように変更
+    let NUM_LINES = 10;
+    let NUM_WINNERS = 2;
+    let WIDTH = 550;
+    
+    const HEIGHT = canvas.height;
+    const LINE_SPACING = 50;
+    const MARGIN_LEFT = 50;
+    const MARGIN_TOP = 20;
+    const MARGIN_BOTTOM = 40;
+    const LINE_LENGTH = HEIGHT - MARGIN_TOP - MARGIN_BOTTOM;
+
+    let horizontalLines = [];
+    let results = [];
+    let isAnimating = false;
+    let isRevealed = false; 
+
+    // 初期化関数
+    function init() {
+      // 設定値の取得
+      NUM_LINES = parseInt(document.getElementById('setting-lines').value) || 10;
+      NUM_WINNERS = parseInt(document.getElementById('setting-winners').value) || 2;
+
+      // エラー処理：当選者が参加人数を超えないようにする
+      if (NUM_WINNERS >= NUM_LINES) {
+        NUM_WINNERS = NUM_LINES - 1;
+        document.getElementById('setting-winners').value = NUM_WINNERS;
+        alert("当選者数は参加人数より少なく自動調整されました。");
+      }
+
+      // キャンバスと入力エリアの幅を人数に応じて動的に計算
+      WIDTH = MARGIN_LEFT * 2 + (NUM_LINES - 1) * LINE_SPACING;
+      canvas.width = WIDTH;
+      document.getElementById('name-inputs').style.width = WIDTH + "px";
+
+      isAnimating = false;
+      isRevealed = false;
+      document.getElementById('status').innerText = "";
+      document.getElementById('draw-btn').disabled = false;
+      
+      generateResults();
+      generateHorizontalLines();
+      createInputs();
+      drawBackground();
+    }
+
+    // 当選と落選の配置をランダムに生成
+    function generateResults() {
+      results = Array(NUM_LINES).fill("落選");
+      let winnersPlaced = 0;
+      while (winnersPlaced < NUM_WINNERS) {
+        let index = Math.floor(Math.random() * NUM_LINES);
+        if (results[index] === "落選") {
+          results[index] = "当選";
+          winnersPlaced++;
+        }
+      }
+    }
+
+    // 横線をランダムに生成
+    function generateHorizontalLines() {
+      horizontalLines = [];
+      // 線の数に応じて横線の数も増減させる
+      const numHlines = Math.floor(NUM_LINES * 2.5); 
+      
+      for (let i = 0; i < numHlines; i++) {
+        const col = Math.floor(Math.random() * (NUM_LINES - 1));
+        const y = MARGIN_TOP + 20 + Math.random() * (LINE_LENGTH - 40);
+        
+        const isOverlap = horizontalLines.some(line => {
+          return (line.col === col || line.col === col - 1 || line.col === col + 1) && Math.abs(line.y - y) < 15;
+        });
+
+        if (!isOverlap) {
+          horizontalLines.push({ col: col, y: y });
+        }
+      }
+      horizontalLines.sort((a, b) => a.y - b.y);
+    }
+
+    // 名前入力欄を生成
+    function createInputs() {
+      const container = document.getElementById('name-inputs');
+      container.innerHTML = '';
+
+      for (let i = 0; i < NUM_LINES; i++) {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'name-input';
+        input.placeholder = (i + 1);
+        input.maxLength = 5;
+        
+        const xPos = MARGIN_LEFT + i * LINE_SPACING;
+        input.style.left = (xPos - 18) + "px"; 
+        
+        container.appendChild(input);
+      }
+    }
+
+    // ベースのあみだくじを描画
+    function drawBackground() {
+      ctx.clearRect(0, 0, WIDTH, HEIGHT);
+      
+      ctx.strokeStyle = "#ddd";
+      ctx.lineWidth = 4;
+      ctx.lineCap = "round";
+
+      for (let i = 0; i < NUM_LINES; i++) {
+        const x = MARGIN_LEFT + i * LINE_SPACING;
+        ctx.beginPath();
+        ctx.moveTo(x, MARGIN_TOP);
+        ctx.lineTo(x, MARGIN_TOP + LINE_LENGTH);
+        ctx.stroke();
+
+        if (isRevealed) {
+          ctx.font = "bold 16px sans-serif";
+          ctx.fillStyle = results[i] === "当選" ? "#e91e63" : "#999";
+          ctx.textAlign = "center";
+          ctx.fillText(results[i], x, MARGIN_TOP + LINE_LENGTH + 25);
+        }
+      }
+
+      for (let line of horizontalLines) {
+        const startX = MARGIN_LEFT + line.col * LINE_SPACING;
+        const endX = startX + LINE_SPACING;
+        ctx.beginPath();
+        ctx.moveTo(startX, line.y);
+        ctx.lineTo(endX, line.y);
+        ctx.stroke();
+      }
+    }
+
+    // 抽選スタート処理
+    function startDraw() {
+      if (isAnimating || isRevealed) return;
+      
+      isAnimating = true;
+      isRevealed = true; 
+      document.getElementById('draw-btn').disabled = true;
+      document.getElementById('status').innerText = "抽選中...";
+
+      let winningPaths = [];
+      let winningNames = [];
+      const inputs = document.querySelectorAll('.name-input');
+
+      for (let i = 0; i < NUM_LINES; i++) {
+        let path = calculatePath(i);
+        if (results[path.finalCol] === "当選") {
+          winningPaths.push(path);
+          let name = inputs[i].value.trim();
+          winningNames.push(name ? name : (i + 1) + "番");
+        }
+      }
+
+      animateWinningPaths(winningPaths, winningNames);
+    }
+
+    // 経路計算ロジック
+    function calculatePath(startIndex) {
+      let currentCol = startIndex;
+      let currentY = MARGIN_TOP;
+      let path = [{ x: MARGIN_LEFT + currentCol * LINE_SPACING, y: currentY }];
+
+      for (let line of horizontalLines) {
+        if (line.y < currentY) continue;
+
+        if (line.col === currentCol) {
+          path.push({ x: MARGIN_LEFT + currentCol * LINE_SPACING, y: line.y });
+          currentCol++;
+          path.push({ x: MARGIN_LEFT + currentCol * LINE_SPACING, y: line.y });
+        } else if (line.col === currentCol - 1) {
+          path.push({ x: MARGIN_LEFT + currentCol * LINE_SPACING, y: line.y });
+          currentCol--;
+          path.push({ x: MARGIN_LEFT + currentCol * LINE_SPACING, y: line.y });
+        }
+      }
+      
+      path.push({ x: MARGIN_LEFT + currentCol * LINE_SPACING, y: MARGIN_TOP + LINE_LENGTH });
+      path.finalCol = currentCol;
+      return path;
+    }
+
+    // 当選ルートのアニメーション処理
+    function animateWinningPaths(winningPaths, winningNames) {
+      let pathIndices = winningPaths.map(() => 0);
+      let currentPos = winningPaths.map(p => ({ ...p[0] }));
+      const speed = 6; 
+
+      function drawFrame() {
+        let finishedCount = 0;
+
+        winningPaths.forEach((path, idx) => {
+          let pIndex = pathIndices[idx];
+          if (pIndex >= path.length - 1) {
+            finishedCount++;
+            return;
+          }
+
+          const target = path[pIndex + 1];
+          const dx = target.x - currentPos[idx].x;
+          const dy = target.y - currentPos[idx].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist <= speed) {
+            currentPos[idx].x = target.x;
+            currentPos[idx].y = target.y;
+            pathIndices[idx]++;
+          } else {
+            currentPos[idx].x += (dx / dist) * speed;
+            currentPos[idx].y += (dy / dist) * speed;
+          }
+        });
+
+        drawBackground(); 
+
+        ctx.strokeStyle = "#e91e63";
+        ctx.lineWidth = 6;
+        ctx.lineJoin = "round";
+
+        winningPaths.forEach((path, idx) => {
+          ctx.beginPath();
+          ctx.moveTo(path[0].x, path[0].y);
+          for (let i = 1; i <= pathIndices[idx]; i++) {
+            ctx.lineTo(path[i].x, path[i].y);
+          }
+          ctx.lineTo(currentPos[idx].x, currentPos[idx].y);
+          ctx.stroke();
+        });
+
+        if (finishedCount === winningPaths.length) {
+          isAnimating = false;
+          document.getElementById('status').innerText = `おめでとうございます！\n【 ${winningNames.join('、')} 】さんが当選です！`;
+        } else {
+          requestAnimationFrame(drawFrame);
+        }
+      }
+      
+      drawFrame();
+    }
+
+    // 起動時に初期化
+    window.onload = init;
+  </script>
+</body>
+</html>
